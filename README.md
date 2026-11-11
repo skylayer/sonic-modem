@@ -66,7 +66,9 @@ at 3/9/21 ms, 20 dB loss) plus 30 ppm clock offset.
   1.5e-2 to zero errors. The 3 ms echo makes the response a comb with notches
   every 333 Hz, so some tones arrive several dB weaker than others; the 9 and
   21 ms echoes also spill past the 2 ms guard into the next symbol.
-  Moving the tones (spacing that is a multiple of 333 Hz) or a 40 % guard both
-  remove the errors in this particular room, which is a hint for the real one.
+  A 40 % guard (which also widens the default tone spacing to 333 Hz, in step
+  with that comb) removes the errors in this particular room, at the cost of
+  2.2 dB. Placing tones to avoid the room's notches is worth exploring once
+  there is a real room to measure.
 * **Sync:** the preamble is found down to about 1 dB Eb/N0 in AWGN and 5 dB in
   the room. Below that whole frames are lost (BER 1 on the plot).
