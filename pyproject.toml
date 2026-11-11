@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sonic-modem"
+version = "0.1.0"
+description = "Acoustic modem lab: ASK/FSK/PSK/QAM over a speaker-to-microphone channel"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "scipy>=1.10"]
+
+[project.optional-dependencies]
+plot = ["matplotlib>=3.7"]
+audio = ["sounddevice>=0.4"]
+dev = ["pytest>=7", "matplotlib>=3.7"]
+
+[tool.setuptools.packages.find]
+include = ["sonic_modem*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
