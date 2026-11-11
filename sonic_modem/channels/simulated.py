@@ -3,7 +3,7 @@
 The signal path is::
 
     tx -> speaker band-pass -> room impulse response (direct path + echoes)
-       -> attenuation -> microphone band-pass -> clock offset/drift
+       -> air absorption -> attenuation -> microphone band-pass -> clock offset/drift
        -> unknown start delay -> + AWGN -> rx
 
 Each stage can be switched off through :class:`AcousticChannelConfig`, which
@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy import signal
 
+from ..acoustics import air_absorption_db_per_m
 from .base import Channel
 
 
@@ -38,7 +39,13 @@ class AcousticChannelConfig:
     echoes: list[tuple[float, float]] = field(
         default_factory=lambda: [(0.003, 0.4), (0.009, -0.25), (0.021, 0.12)]
     )
-    #: overall loss from speaker to microphone, in dB (positive = quieter)
+    #: speaker-to-mic distance for frequency-dependent air absorption
+    #: (ISO 9613-1); None disables it. Broadband losses such as spherical
+    #: spreading belong in ``attenuation_db``.
+    distance_m: float | None = 1.0
+    temperature_c: float = 20.0
+    humidity_pct: float = 50.0
+    #: overall broadband loss from speaker to microphone, in dB (positive = quieter)
     attenuation_db: float = 20.0
     #: random silence before the signal starts, as (min, max) seconds
     start_delay: tuple[float, float] = (0.05, 0.5)
@@ -78,6 +85,20 @@ class SimulatedAcousticChannel(Channel):
             h[int(round(d * self.fs))] += g
         return h
 
+    def air_loss_db(self, f) -> np.ndarray:
+        c = self.config
+        if c.distance_m is None:
+            return np.zeros_like(np.asarray(f, dtype=float))
+        return c.distance_m * air_absorption_db_per_m(f, c.temperature_c, c.humidity_pct)
+
+    def _air(self, x: np.ndarray) -> np.ndarray:
+        """Zero-phase frequency-domain air absorption filter."""
+        if self.config.distance_m is None or len(x) == 0:
+            return x
+        n = len(x)
+        gain = 10 ** (-self.air_loss_db(np.fft.rfftfreq(n, 1 / self.fs)) / 20)
+        return np.fft.irfft(np.fft.rfft(x) * gain, n)
+
     def _resample(self, x: np.ndarray, frac: float) -> np.ndarray:
         """Apply a fractional delay and clock drift by band-limited interpolation."""
         ppm = self.config.clock_ppm
@@ -106,6 +127,7 @@ class SimulatedAcousticChannel(Channel):
         if self._speaker is not None:
             x = signal.sosfilt(self._speaker, x)
         x = signal.fftconvolve(x, self.impulse_response)[: len(x)]
+        x = self._air(x)
         x *= 10 ** (-c.attenuation_db / 20)
         if self._mic is not None:
             x = signal.sosfilt(self._mic, x)
@@ -133,6 +155,7 @@ class SimulatedAcousticChannel(Channel):
         """Magnitude response (dB) of the linear part of the channel."""
         f = np.fft.rfftfreq(2 * n, 1 / self.fs)
         H = np.fft.rfft(self.impulse_response, 2 * n) * 10 ** (-self.config.attenuation_db / 20)
+        H = H * 10 ** (-self.air_loss_db(f) / 20)
         for sos in (self._speaker, self._mic):
             if sos is not None:
                 _, h = signal.sosfreqz(sos, worN=f, fs=self.fs)

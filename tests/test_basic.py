@@ -89,3 +89,23 @@ def test_awgn_ber_matches_theory():
     ber = bit_errors(bits, modem.demodulate(y, len(bits))) / len(bits)
     theory = float(ber_noncoherent_mfsk(ebn0_db, 2))
     assert ber == pytest.approx(theory, rel=0.25)
+
+
+def test_air_absorption_matches_iso_9613_table():
+    from sonic_modem.acoustics import air_absorption_db_per_m
+
+    # ISO 9613-1 Table 1, 20 C, 50 % RH, 101.325 kPa (dB/km)
+    for f, ref in [(1000, 4.66), (2000, 9.86), (4000, 29.7), (8000, 105)]:
+        assert air_absorption_db_per_m(f) * 1000 == pytest.approx(ref, rel=0.02)
+
+
+def test_channel_applies_air_absorption():
+    cfg = dict(speaker_band=None, mic_band=None, echoes=[], attenuation_db=0,
+               start_delay=(0, 0), tail=0, fractional_delay=False, snr_db=None)
+    fs = 48_000
+    t = np.arange(fs) / fs
+    tone = np.sin(2 * np.pi * 12_000 * t)
+    ch = SimulatedAcousticChannel(AcousticChannelConfig(distance_m=50, **cfg))
+    y = ch.transmit(tone)[: fs]
+    loss = 10 * np.log10(np.mean(tone[1000:-1000] ** 2) / np.mean(y[1000:-1000] ** 2))
+    assert loss == pytest.approx(float(ch.air_loss_db(12_000)), abs=0.1)
